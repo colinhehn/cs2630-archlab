@@ -1,0 +1,142 @@
+#/* $begin ncopy-ys */
+##################################################################
+# ncopy.ys - Copy a src block of len words to dst.
+# Return the number of positive words (>0) contained in src.
+#
+# Colin Hehn - chehn (or 01464532)
+#
+# This ncopy function is an amalgam of trial and error methods. By
+# that I mean that I first tried a base 2 loop unrolling (TwoLoopStart).
+# Then from there I found that you could break it down even more, hence
+# the base 6 loop unrolling (SixLoopStart). By deferring the rmmovq's to
+# the next iteration, the pipeline doesn't have to stall before completing
+# them because of previous mrmovq's. It brings down our CPE immensely!
+# Besides this, we just refactored the code to use iaddq instead of
+# useless memory access operations. BOOM!
+#
+##################################################################
+# Do not modify this portion
+# Function prologue.
+# %rdi = src, %rsi = dst, %rdx = len
+ncopy:
+
+##################################################################
+# You can modify this portion
+
+Start:
+    # length < 8 check
+	rrmovq %rdx, %r10
+	iaddq $-10, %r10
+	andq %r10, %r10
+	jl TwoLoopStart
+
+SixLoopStart:
+	iaddq $-10, %rdx     # decrease length by 8
+    jl Len_Cleanup      # go back into loop if length >= 8
+Loop0:
+	mrmovq (%rdi), %r10       # read val from src…
+	mrmovq 8(%rdi), %r11
+    andq %r10, %r10     	  # val <= 0?
+	rmmovq %r10, (%rsi)       # ...and store it to dst
+    jle Loop1            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop1:
+	mrmovq 16(%rdi), %r10     # read val from src…
+    andq %r11, %r11    		  # val <= 0?
+	rmmovq %r11, 8(%rsi)      # ...and store it to dst
+    jle Loop2            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop2:
+	mrmovq 24(%rdi), %r11     # read val from src…
+    andq %r10, %r10     	  # val <= 0?
+	rmmovq %r10, 16(%rsi)     # ...and store it to dst
+    jle Loop3            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop3:
+	mrmovq 32(%rdi), %r10     # read val from src…
+    andq %r11, %r11     	  # val <= 0?
+	rmmovq %r11, 24(%rsi)     # ...and store it to dst
+    jle Loop4            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop4:
+	mrmovq 40(%rdi), %r11     # read val from src…
+    andq %r10, %r10     	  # val <= 0?
+	rmmovq %r10, 32(%rsi)     # ...and store it to dst
+    jle Loop5            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop5:
+	mrmovq 48(%rdi), %r10     # read val from src…
+    andq %r11, %r11     	  # val <= 0?
+	rmmovq %r11, 40(%rsi)     # ...and store it to dst
+    jle Loop6            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop6:
+	mrmovq 56(%rdi), %r11     # read val from src…
+    andq %r10, %r10     	  # val <= 0?
+	rmmovq %r10, 48(%rsi)     # ...and store it to dst
+    jle Loop7            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop7:
+	mrmovq 64(%rdi), %r10     # read val from src…
+    andq %r11, %r11     	  # val <= 0?
+	rmmovq %r11, 56(%rsi)     # ...and store it to dst
+    jle Loop8            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop8:
+	mrmovq 72(%rdi), %r11     # read val from src…
+    andq %r10, %r10     	  # val <= 0?
+	rmmovq %r10, 64(%rsi)     # ...and store it to dst
+    jle Loop9            	  # if so, goto Npos:
+    iaddq $1, %rax
+Loop9:
+    andq %r11, %r11     	  # val <= 0?
+	rmmovq %r11, 72(%rsi)     # ...and store it to dst
+    jle SixLoopEnd            # if so, goto Npos:
+    iaddq $1, %rax
+SixLoopEnd:
+	iaddq $80, %rdi			   # dst += 8 * 8
+	iaddq $80, %rsi			   # src += 8 * 8
+	jmp SixLoopStart
+
+Len_Cleanup:
+    iaddq $10, %rdx     # increment length by 8
+
+
+TwoLoopStart:
+    iaddq $-2, %rdx         # decrease length by 2
+    jl Cleanup              # go back into loop if length >= 2
+Loop:   
+    mrmovq (%rdi), %r10     # read val from src…
+    mrmovq 8(%rdi), %r11    # <- from class get second value
+    andq %r10, %r10         # val <= 0?
+    rmmovq %r10, (%rsi)     # ...and store it to dst
+    rmmovq %r11, 8(%rsi)         # store second val to dst
+    jle LoopSecondCheck     # if so, goto Npos:
+    iaddq $1, %rax
+LoopSecondCheck:   
+    andq %r11, %r11     # check if src[1] <= 0
+    jle Maintenance     # if it is, don’t increase count
+    iaddq $1, %rax
+Maintenance: 
+    iaddq $16, %rdi     # increase stack or base pointer to get next 2 vals
+    iaddq $16, %rsi     # increase stack or base pointer to store next 2 vals
+    jmp TwoLoopStart
+
+Cleanup:
+    iaddq $1, %rdx
+    jl Done             # if length < 0, jmp to Done, no cleanup needed
+    mrmovq (%rdi), %r10 # get next val
+    rmmovq %r10, (%rsi) # move val onto stack
+    andq %r10, %r10     # check if val <= 0
+    jle Done            # skip count if val < 0
+    iaddq $1, %rax      # same as iaddq $1, %rax
+
+##################################################################
+# Do not modify the following section of code
+# Function epilogue.
+Done:
+	ret
+##################################################################
+# Keep the following label at the end of your function
+End:
+#/* $end ncopy-ys */
